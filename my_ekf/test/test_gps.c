@@ -4,11 +4,13 @@
 #include <math.h>
 #include <string.h>
 
+#ifdef FLOAT_EKF
 #include "float_ekf.h"
 #include "float_mat_ops.h"
-
+#else
 #include "double_ekf.h"
 #include "double_mat_ops.h"
+#endif
 
 #include "mat_types.h"
 
