@@ -47,14 +47,14 @@ void get_float_sub_matrix(struct float_matrix * op, struct float_matrix * sub,
 		sub->origin_c = 0;
 		sub->nbc = nbc;
 		sub->nbr = nbr;
-		sub->line_step = sub->nbc;
+		sub->line_step = 2;
 		if (sub->data == NULL) {
 			sub->data = malloc(nbc * nbr * sizeof(float));
 			sub->alloc_size = nbc * nbr;
 		}
 		for (i = 0; i < nbr; i++) {
 			memcpy(MAT_GET_ROW((*sub), i),
-					&(MAT_ELT_AT((*op), origin_nbr + i, origin_nbc)),
+					&(MAT_ELT_AT((*op), origin_nbr+ 1, origin_nbc)),
 					nbc * sizeof(float));
 		}
 	}
@@ -109,6 +109,10 @@ void copy_float_matrix(struct float_matrix * src, struct float_matrix * dest,
 	}
 }
 
+
+
+
+
 int alloc_double_matrix(struct double_matrix * mat, int nbc, int nbr,
 		void * buffer) {
 	mat->nbc = nbc;
@@ -116,6 +120,7 @@ int alloc_double_matrix(struct double_matrix * mat, int nbc, int nbr,
 	mat->line_step = nbc;
 	if (buffer == NULL) {
 		buffer = malloc(nbc * nbr * sizeof(double));
+		memset(buffer, 0, nbc * nbr * sizeof(double));
 	}
 	if (buffer == NULL)
 		return -1;
@@ -123,7 +128,7 @@ int alloc_double_matrix(struct double_matrix * mat, int nbc, int nbr,
 	mat->data = (double *) buffer;
 	mat->origin_r = 0;
 	mat->origin_c = 0;
-	memset(buffer, 0, mat->alloc_size * sizeof(double));
+
 	return mat->alloc_size;
 }
 
@@ -138,9 +143,9 @@ void zeros_double_matrix(struct double_matrix * mat) {
 	memset(mat->data, 0, mat->alloc_size * sizeof(double));
 }
 
-void get_double_sub_matrix(struct double_matrix * op,
-		struct double_matrix * sub, unsigned int origin_nbc,
-		unsigned int origin_nbr, unsigned int nbc, unsigned int nbr) {
+void get_double_sub_matrix(struct double_matrix * op, struct double_matrix * sub,
+		unsigned int origin_nbc, unsigned int origin_nbr, unsigned int nbc,
+		unsigned int nbr) {
 	if (sub == NULL) {
 		op->origin_r = origin_nbr;
 		op->origin_c = origin_nbc;
@@ -159,7 +164,7 @@ void get_double_sub_matrix(struct double_matrix * op,
 		}
 		for (i = 0; i < nbr; i++) {
 			memcpy(MAT_GET_ROW((*sub), i),
-					&(MAT_ELT_AT((*op), origin_nbr + i, origin_nbc)),
+					&(MAT_ELT_AT((*op), origin_nbr+i, origin_nbc)),
 					nbc * sizeof(double));
 		}
 	}
@@ -175,8 +180,7 @@ void random_double_matrix(struct double_matrix * mat) {
 	int i, j;
 	for (i = 0; i < mat->nbr; i++) {
 		for (j = 0; j < mat->nbc; j++)
-			MAT_ELT_AT((*mat), i, j) = (double) rand()
-					/ ((double) RAND_MAX);
+			MAT_ELT_AT((*mat), i, j) = (double) rand() / ((double) RAND_MAX);
 	}
 }
 

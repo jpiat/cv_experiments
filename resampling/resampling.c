@@ -319,6 +319,7 @@ int compute_ground_pixel_projection(double * uv_c1, double * uv_c2, double * n,
 	free_double_matrix(&matB_struct);
 	free_double_matrix(&matX_struct);
 	free_double_matrix(&C2_pixel);
+	return 1 ;
 }
 
 int main(int argc, char ** argv) {

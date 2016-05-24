@@ -5,10 +5,10 @@
  *      Author: jpiat
  */
 
-#include <mat_types.h>
-#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "float_mat_ops.h"
 
 inline void float_scalar_vect_mac(float scalar, float * vec, float * res,
@@ -51,17 +51,15 @@ int float_mat_product(struct float_matrix * op1, struct float_matrix * op2,
 			|| (op1_transpose && !op2_transpose)) {
 		for (i = 0; i < op1->nbc; i++) {
 			for (j = 0; j < op1->nbr; j++) {
-				float_scalar_vect_mac(MAT_ELT_AT((*op1), j, i),
-						MAT_GET_ROW((*op2), i), MAT_GET_ROW((*res), j),
-						op2->nbc);
-			}
-		}
-	} else if (!op2_transpose && op1_transpose) {
-		for (i = 0; i < op1->nbr; i++) {
-			for (j = 0; j < op1->nbc; j++) {
-				float_scalar_vect_mac(MAT_ELT_AT((*op1), i, j),
-						MAT_GET_ROW((*op2), i), MAT_GET_ROW((*res), j),
-						op2->nbc);
+				if (op1_transpose) {
+					float_scalar_vect_mac(MAT_ELT_AT((*op1), j, i),
+							MAT_GET_ROW((*op2), i), MAT_GET_ROW((*res), j),
+							op2->nbc);
+				} else {
+					float_scalar_vect_mac(MAT_ELT_AT((*op1), j, i),
+							MAT_GET_ROW((*op2), i), MAT_GET_ROW((*res), j),
+							op2->nbc);
+				}
 			}
 		}
 	} else if (op2_transpose && !op1_transpose) {
@@ -122,6 +120,83 @@ int float_mat_trace(struct float_matrix * op1, float * trace) {
 	}
 
 	return 1;
+}
+
+int float_matrix_minor(struct float_matrix * src, struct float_matrix * dest,
+		int row, int col) {
+	int i, j;
+	// indicate which col and row is being copied to dest
+	int colCount = 0, rowCount = 0;
+
+	for (i = 0; i < src->nbc; i++) {
+		if (i != row) {
+			colCount = 0;
+			for (j = 0; j < src->nbr; j++) {
+				// when j is not the element
+				if (j != col) {
+					MAT_ELT_AT((*dest), rowCount, colCount) = MAT_ELT_AT(
+							(*src), i, j);
+					colCount++;
+				}
+			}
+			rowCount++;
+		}
+	}
+
+	return 1;
+}
+
+// Calculate the determinant recursively.
+float float_matrix_calc_ndp_det(struct float_matrix * mat) {
+	int i;
+	// order must be >= 0
+	// stop the recursion when matrix is a single element
+	if (mat->nbc == 1)
+		return MAT_ELT_AT((*mat), 0, 0);
+
+	// the determinant value
+	float det = 0;
+
+	// allocate the cofactor matrix
+	struct float_matrix minor;
+	alloc_float_matrix(&minor, mat->nbc - 1, mat->nbr - 1, NULL);
+	for (i = 0; i < mat->nbc; i++) {
+		// get minor of element (0,i)
+		float_matrix_minor(mat, &minor, 0, i);
+		// the recusion is here!
+
+		det += (i % 2 == 1 ? -1.0 : 1.0) * MAT_ELT_AT((*mat), 0, i)
+				* float_matrix_calc_ndp_det(&minor);
+		//det += pow( -1.0, i ) * mat[0][i] * CalcDeterminant( minor,order-1 );
+	}
+	free_float_matrix(&minor);
+	return det;
+}
+
+// matrix inversioon
+// the result is put in Y
+int float_matrix_ndp_inversion(struct float_matrix *A,
+		struct float_matrix * A_inv) {
+	int i, j;
+	// get the determinant of a
+	float det = 1.0 / float_matrix_calc_ndp_det(A);
+	if (det == 0 || A->nbc != A->nbr)
+		return -1;
+	struct float_matrix minor;
+	alloc_float_matrix(&minor, A->nbc - 1, A->nbr - 1, NULL);
+
+	for (j = 0; j < A->nbr; j++) {
+		for (i = 0; i < A->nbc; i++) {
+			// get the co-factor (matrix) of A(j,i)
+			float_matrix_minor(A, &minor, j, i);
+			MAT_ELT_AT((*A_inv), i, j) = det
+					* float_matrix_calc_ndp_det(&minor);
+			if ((i + j) % 2 == 1)
+				MAT_ELT_AT((*A_inv), i,j) = -(MAT_ELT_AT((*A_inv), i, j));
+		}
+	}
+	return 1;
+
 }
 
 //Following is adaptation of http://jean-pierre.moreau.pagesperso-orange.fr/Cplus/choles_cpp.txt
@@ -209,7 +284,7 @@ float float_mat_det(struct float_matrix * a) {
 int float_mat_inv(struct float_matrix * A, struct float_matrix *a) {
 	int i, j, k;
 	if (float_choldcsl((*A), a) < 0)
-		return -1;
+		return float_matrix_ndp_inversion(A, a);
 	for (i = 0; i < A->nbc; i++) {
 		for (j = i + 1; j < A->nbc; j++) {
 			MAT_ELT_AT((*a),i, j) = 0.0;
