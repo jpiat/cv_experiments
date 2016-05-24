@@ -1,38 +1,30 @@
 PWD := $(shell pwd)
-CFLAGS=-I"${PWD}/inc" -O3 -Wall -fPIC 
-LDFLAGS= -lm
+CFLAGS=-I"${PWD}/inc" -I"${PWD}/../lib/math/inc" -O3 -Wall -fPIC 
+LDFLAGS= -lm -lmathd -lmathf -L"${PWD}" -L"${PWD}/../lib/math"
 
 BUILDDIR=build
 
-SRC_FLOAT := src/float_ekf.c \
-	src/float_mat_ops.c \
-	src/mat_types.c \
+SRC_FLOAT := src/float_ekf.c
 
-SRC_DOUBLE := src/double_ekf.c \
-	src/double_mat_ops.c \
-	src/mat_types.c \
+SRC_DOUBLE := src/double_ekf.c
 
-OBJS_FLOAT := src/float_ekf.o \
-	src/float_mat_ops.o \
-	src/mat_types.o \
+OBJS_FLOAT := src/float_ekf.o
 
-OBJS_DOUBLE := src/double_ekf.o \
-	src/double_mat_ops.o \
-	src/mat_types.o \
+OBJS_DOUBLE := src/double_ekf.o
 
 test_gps_float : test_gps_float.o libekff.so
-	gcc -o $@ -L${PWD} $< -lekff -lm
+	gcc -o $@ $< ${LDFLAGS} -lekff
 	rm test_gps_float.o
 
 test_gps_double : test_gps_double.o libekf.so
-	gcc -o $@ -L${PWD} $< -lekf -lm
+	gcc -o $@  $< ${LDFLAGS} -lekf
 	rm test_gps_double.o
 
 test_gps_float.o : test/test_gps.c
-	gcc -I"inc/" -DFLOAT_EKF -c -o $@ $<
+	gcc ${CFLAGS} -DFLOAT_EKF -c -o $@ $<
 
 test_gps_double.o : test/test_gps.c
-	gcc -I"inc/" -DDOUBLE_EKF -c -o $@ $<
+	gcc ${CFLAGS} -DDOUBLE_EKF -c -o $@ $<
 
 libekff.so : ${OBJS_FLOAT}
 	gcc -shared -o $@ ${OBJS_FLOAT} ${LDFLAGS}
