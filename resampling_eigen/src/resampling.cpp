@@ -24,6 +24,13 @@ Matrix<double, 4, 4> cam_2_mat;
 Matrix<double, 4, 4> cam_2_mk;
 Matrix<double, 4, 4> cam_1_mk;
 
+void to_normalized_image_plane(double u, double v, Matrix<double, 3, 3> K,
+		Matrix<double, 3, 1> & normed_coord) {
+	normed_coord(0, 0) = (u - K(0, 2)) / K(0, 0); //vers plan image normalisé avec origine en axe principale et unité métrique
+	normed_coord(1, 0) = (v - K(1, 2)) / K(1, 1);
+	normed_coord(2, 0) = 1.;
+}
+
 void homography(unsigned char * image_data, int w, int h, unsigned char * img_h,
 		Matrix<double, 3, 3> H, Matrix<double, 3, 3> K1,
 		Matrix<double, 3, 3> K2) {
@@ -32,18 +39,26 @@ void homography(unsigned char * image_data, int w, int h, unsigned char * img_h,
 	//p_a = Hba*p_b -> dans le plan image normalisé
 	for (u = 0; u < w; u++) {
 		for (v = 0; v < h; v++) {
-			double xn = (u - K1(0, 2)) / K1(0, 0); //vers plan image normalisé avec origine en axe principale et unité métrique
+			Matrix<double, 3, 1> pixel ;
+			Matrix<double, 3, 1> pixelp ;
+			to_normalized_image_plane(u, v, K1,pixel);
+			/*double xn = (u - K1(0, 2)) / K1(0, 0); //vers plan image normalisé avec origine en axe principale et unité métrique
 			double yn = (v - K1(1, 2)) / K1(1, 1);
-
-			double xnp = xn * H(0, 0) + yn * H(0, 1) + H(0, 2);
+	*/
+			pixelp = H * pixel;
+			/*double xnp = xn * H(0, 0) + yn * H(0, 1) + H(0, 2);
 			double ynp = xn * H(1, 0) + yn * H(1, 1) + H(1, 2);
 			double wnp = xn * H(2, 0) + yn * H(2, 1) + H(2, 2);
 
 			double xnp_norm = xnp / wnp;
-			double ynp_norm = ynp / wnp;
+			double ynp_norm = ynp / wnp;*/
+			pixelp = pixelp/pixelp(2, 0);
 
-			double xnp_norm_img = xnp_norm * K2(0, 0) + K2(0, 2); //vers plan image normalisé avec origine en axe principale et unité métrique
-			double ynp_norm_img = ynp_norm * K2(1, 1) + K2(1, 2);
+			/*double xnp_norm_img = xnp_norm * K2(0, 0) + K2(0, 2); //vers plan image normalisé avec origine en axe principale et unité métrique
+			double ynp_norm_img = ynp_norm * K2(1, 1) + K2(1, 2);*/
+			double xnp_norm_img = pixelp(0, 0) * K2(0, 0) + K2(0, 2) ;
+			double ynp_norm_img = pixelp(1, 0) * K2(1, 1) + K2(1, 2);
+
 			/*int hu = round(xnp_norm_img + 0.5);
 			 int hv = round(ynp_norm_img + 0.5);*/
 
@@ -179,7 +194,6 @@ int main(int argc, char ** argv) {
 	obs1[1] = H * obs2[1];
 	obs1[2] = H * obs2[2];
 	obs1[3] = H * obs2[3];
-
 
 	cout << "obs[0] = " << obs1[0] << endl;
 	cout << "obs[1] = " << obs1[1] << endl;

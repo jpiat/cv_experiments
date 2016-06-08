@@ -1,7 +1,7 @@
 #include "dlt_plane.hpp"
 #include <cmath>
 
-#define NORMALIZE
+// #define NORMALIZE
 
 int normalize_for_H(Matrix<double, 3, 1> * obs1, Matrix<double, 3, 1> * obs1n,
 		Matrix<double, 3, 3> & H, unsigned int nb_pts) {
