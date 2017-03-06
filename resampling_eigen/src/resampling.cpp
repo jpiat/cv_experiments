@@ -9,6 +9,11 @@
 
 #include "dlt_plane.hpp"
 
+extern "C" {
+#include "image/fast/fast.h"
+#include "image/brief.h"
+}
+
 using namespace Eigen;
 using namespace cv;
 using namespace std;
@@ -39,24 +44,24 @@ void homography(unsigned char * image_data, int w, int h, unsigned char * img_h,
 	//p_a = Hba*p_b -> dans le plan image normalisé
 	for (u = 0; u < w; u++) {
 		for (v = 0; v < h; v++) {
-			Matrix<double, 3, 1> pixel ;
-			Matrix<double, 3, 1> pixelp ;
-			to_normalized_image_plane(u, v, K1,pixel);
+			Matrix<double, 3, 1> pixel;
+			Matrix<double, 3, 1> pixelp;
+			to_normalized_image_plane(u, v, K1, pixel);
 			/*double xn = (u - K1(0, 2)) / K1(0, 0); //vers plan image normalisé avec origine en axe principale et unité métrique
-			double yn = (v - K1(1, 2)) / K1(1, 1);
-	*/
+			 double yn = (v - K1(1, 2)) / K1(1, 1);
+			 */
 			pixelp = H * pixel;
 			/*double xnp = xn * H(0, 0) + yn * H(0, 1) + H(0, 2);
-			double ynp = xn * H(1, 0) + yn * H(1, 1) + H(1, 2);
-			double wnp = xn * H(2, 0) + yn * H(2, 1) + H(2, 2);
+			 double ynp = xn * H(1, 0) + yn * H(1, 1) + H(1, 2);
+			 double wnp = xn * H(2, 0) + yn * H(2, 1) + H(2, 2);
 
-			double xnp_norm = xnp / wnp;
-			double ynp_norm = ynp / wnp;*/
-			pixelp = pixelp/pixelp(2, 0);
+			 double xnp_norm = xnp / wnp;
+			 double ynp_norm = ynp / wnp;*/
+			pixelp = pixelp / pixelp(2, 0);
 
 			/*double xnp_norm_img = xnp_norm * K2(0, 0) + K2(0, 2); //vers plan image normalisé avec origine en axe principale et unité métrique
-			double ynp_norm_img = ynp_norm * K2(1, 1) + K2(1, 2);*/
-			double xnp_norm_img = pixelp(0, 0) * K2(0, 0) + K2(0, 2) ;
+			 double ynp_norm_img = ynp_norm * K2(1, 1) + K2(1, 2);*/
+			double xnp_norm_img = pixelp(0, 0) * K2(0, 0) + K2(0, 2);
 			double ynp_norm_img = pixelp(1, 0) * K2(1, 1) + K2(1, 2);
 
 			/*int hu = round(xnp_norm_img + 0.5);
@@ -149,6 +154,52 @@ void compute_homography_from_cam_cam_pos(Matrix<double, 4, 4> C1_pose,
 
 }
 
+void detect_and_draw_corners(Mat & img) {
+	xy * corners;
+	int nb_corners, i;
+	corners = fast9_detect_nonmax(img.data, img.cols, img.rows, img.cols, 80,
+			&nb_corners);
+	for (i = 0; i < nb_corners; i++) {
+
+		circle(img, Point(corners[i].x, corners[i].y), 3, Scalar(255), 1, 8, 0);
+	}
+}
+
+void get_descriptors(Mat & img, xy * corners, brief_descriptor ** descs,
+		unsigned int nb_corners) {
+	int i;
+	gray_image img_gray;
+	img_gray.width = img.cols;
+	img_gray.height = img.rows;
+	img_gray.width_step = img.cols;
+	img_gray.imageData = (unsigned char *) img.data;
+	(*descs) = (brief_descriptor *) malloc(
+			nb_corners * sizeof(brief_descriptor));
+	for (i = 0; i < nb_corners; i++) {
+		computeBriefDescriptor(&img_gray, corners[i].x, corners[i].y,
+				(unsigned char *) ((*descs)[i]));
+	}
+}
+
+void match_descriptors(brief_descriptor * desc_1, brief_descriptor * desc_2,
+		unsigned int nb_corners_1, unsigned int nb_corners_2,
+		int ** match_list) {
+	unsigned int i, j;
+	(*match_list) = (int *) malloc(nb_corners_1 * sizeof(int));
+	for (i = 0; i < nb_corners_1; i++) {
+		(*match_list)[i] = -1; //no match so far
+		unsigned int min_dist = 0xFFFFFFFF;
+		for (j = 0; j < nb_corners_2; j++) {
+			unsigned int dist = hammingDist(desc_1[i], desc_2[j]);
+			if (dist < min_dist) {
+				min_dist = dist;
+				(*match_list)[i] = j;
+			}
+		}
+	}
+
+}
+
 int main(int argc, char ** argv) {
 
 	cam_1_mat << -1.141065701958907e+03, 3.421466553556007e+02, -1.835992900918554e+03, 5.436898725066867e+05, 7.996462861460456e+02, 2.013181974660253e+03, -2.017580480078388e+02, 1.094990499809007e+05, 7.010124343170585e-01, -1.711311329622356e-01, -6.923118533319601e-01, 1.066915525986577e+03, 0, 0, 0, 1;
@@ -169,12 +220,23 @@ int main(int argc, char ** argv) {
 
 	Matrix<double, 3, 3> H;
 	Matrix<double, 3, 1> n;
+	brief_descriptor * desc_1, *desc_2;
+	xy * corners_1, corners_2;
+	int nb_corners_1, nb_corners_2;
+	int * match_list;
 	n << 0, 0, 1;
 	double d = -104.;
 	compute_homography_from_cam_cam_pos(cam_1_mk, cam_2_mk, n, d, K, K, H);
 
 	homography((unsigned char *) img_a.data, img_compo_2.cols, img_compo_2.rows,
 			(unsigned char *) img_compo_2.data, H, K, K);
+	corners_1 = fast9_detect_nonmax(img_a.data, img_a.cols, img_a.rows,
+			img_a.cols, 80, &nb_corners_1);
+
+	//detect_and_draw_corners(img_a);
+	get_descriptors(img_a, corners_1, &desc_1, nb_corners_1);
+	get_descriptors(img_a, corners_1, &desc_2, nb_corners_1);
+	match_descriptors(desc_1, desc_2, nb_corners_1, nb_corners_1, &match_list);
 	imshow("input", img_a);
 	imshow("result", img_compo_2);
 	waitKey(0);

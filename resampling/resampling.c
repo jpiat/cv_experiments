@@ -49,6 +49,18 @@ double cam_bertrand_K[9] = { 2.149349810656288e+03, 0, 4.126264577230862e+02, 0,
 		2.146276553276586e+03, 3.557233656020202e+02, 0, 0,
 		1.000000000000000e+00 };
 
+double K_slam[9] = { 674.148669, 0, 312.668285, 0, 674.148669, 223.832270, 0, 0,
+		1. };
+
+double K_virt[9] = { 320, 0, 320, 0, 240, 240, 0, 0, 1. };
+
+// à redéfinir avec la poser correcte
+double cam_1_C[12] = { 1, 0, 0, 0, 0, 0, -1, 1., 0, 1, 0, 0 };
+double cam_1_Ctilde[12];
+
+#define THETA_CAM_BIRD -(M_PI)
+//double cam_bird_Rtw[16] = {};
+
 double distort_plumb_bob(double xn, double yn, double * xd, double * yd,
 		double * poly) {
 	double r_square = xn * xn + yn * yn;
@@ -89,7 +101,8 @@ void undistort_image(char * img_data, int w, int h, char * img_u, int wu,
 	}
 }
 
-void homography(char * image_data, int w, int h, char * img_h, double * H, double * K1, double * K2) {
+void homography(char * image_data, int w, int h, char * img_h, double * H,
+		double * K1, double * K2) {
 	int u, v;
 	memset(img_h, 0, w * h);
 	//p_a = Hba*p_b -> dans le plan image normalisé
@@ -107,17 +120,84 @@ void homography(char * image_data, int w, int h, char * img_h, double * H, doubl
 
 			double xnp_norm_img = xnp_norm * K2[0] + K2[2]; //vers plan image normalisé avec origine en axe principale et unité métrique
 			double ynp_norm_img = ynp_norm * K2[4] + K2[5];
-			int hu = round(xnp_norm_img + 0.5);
-			int hv = round(ynp_norm_img + 0.5);
+			int hu = floor(xnp_norm_img);
+			int hv = floor(ynp_norm_img);
 
 			if (hu >= 0 && hv >= 0 && hu < w && hv < h) {
-				img_h[u + (v * w)] = image_data[hu + (hv * w)];
 
-				//should add interpolation instead of nearest neighbor ...
+				float pixel_val1, pixel_val2, pixel_val;
+				float pixa, pixb, pixc, pixd;
+
+				/*if (xnp_norm_img < hu)
+				 cout << "problem" << endl;
+				 if (ynp_norm_img < hv)
+				 cout << "problem" << endl;*/
+				pixa = image_data[(hu) + (hv * w)];
+				pixb = image_data[(hu + 1) + (hv * w)];
+
+				pixc = image_data[(hu) + ((hv + 1) * w)];
+				pixd = image_data[(hu + 1) + ((hv + 1) * w)];
+
+				pixel_val1 = pixa * (1 - (xnp_norm_img - hu));
+				pixel_val1 += pixb * ((xnp_norm_img - hu));
+
+				pixel_val2 = pixc * (1 - (xnp_norm_img - hu));
+				pixel_val2 += pixd * ((xnp_norm_img - hu));
+
+				pixel_val = pixel_val1 * (1 - (ynp_norm_img - hv));
+				pixel_val += pixel_val2 * (ynp_norm_img - hv);
+
+				img_h[u + (v * w)] = round(pixel_val);
 			}
-
 		}
 	}
+}
+
+void calc_ct_and_H(double * world_to_cam, double * K, double *Ct, double * H) {
+	int i;
+	struct double_matrix world_to_cam_struct, K_struct, Ct_struct;
+	alloc_double_matrix(&world_to_cam_struct, 4, 3, world_to_cam);
+	alloc_double_matrix(&K_struct, 3, 3, K);
+	alloc_double_matrix(&Ct_struct, 4, 3, Ct);
+
+	double_mat_product(&K_struct, &world_to_cam_struct, &Ct_struct, 0, 0);
+
+	print_double_matrix(Ct_struct, "Ct");
+	H[0] = Ct[0];
+	H[1] = Ct[1];
+	H[2] = Ct[3];
+	H[3] = Ct[4];
+	H[4] = Ct[5];
+	H[5] = Ct[7];
+	H[6] = Ct[8];
+	H[7] = Ct[9];
+	H[8] = Ct[11];
+	printf("H =");
+	for(i = 0 ; i < 9 ; i ++) printf("%lf, ", H[i]);
+}
+void pixel_to_ground_plane(double * Ct, double u, double v, double * x,
+		double * y) {
+	struct double_matrix Ct_struct;
+	alloc_double_matrix(&Ct_struct, 4, 3, Ct);
+
+	double a1 = MAT_ELT_AT(Ct_struct, 0, 0) - u * MAT_ELT_AT(Ct_struct, 2, 0);
+	double b1 = MAT_ELT_AT(Ct_struct, 0, 1) - u * MAT_ELT_AT(Ct_struct, 2, 1);
+	double c1 = MAT_ELT_AT(Ct_struct, 0, 2) - u * MAT_ELT_AT(Ct_struct, 2, 2);
+
+	double a2 = MAT_ELT_AT(Ct_struct, 1, 0) - v * MAT_ELT_AT(Ct_struct, 2, 0);
+	double b2 = MAT_ELT_AT(Ct_struct, 1, 1) - v * MAT_ELT_AT(Ct_struct, 2, 1);
+	double c2 = MAT_ELT_AT(Ct_struct, 1, 2) - v * MAT_ELT_AT(Ct_struct, 2, 2);
+
+	double d1 = -(MAT_ELT_AT(Ct_struct, 0, 3) - u * MAT_ELT_AT(Ct_struct, 2, 3));
+	double d2 = -(MAT_ELT_AT(Ct_struct, 1, 3) - v * MAT_ELT_AT(Ct_struct, 2, 3));
+
+	double b3 = a2 * b1 - a1 * b2;
+	double c3 = a2 * c1 - a1 * c2;
+	double d3 = a2 * d1 - a1 * d2;
+
+	(*y) = d3 / b3;
+	(*x) = (d1 - ((*y) * b1)) / a1;
+
 }
 
 /**
@@ -215,9 +295,9 @@ void compute_homography_from_cam_cam_pos(double * C1_pose, double * C2_pose,
 	}
 
 	double_mat_sub(&R_C2C1, &t_C2_C2C1_nC1t, &H_struct);
-/*	double_mat_product(&K1_struct, &H_struct, &K1H, 0, 0);
-	double_mat_inv(&K2_struct, &K2_inv);
-	double_mat_product(&K1H, &K2_inv, &H_struct, 0, 0);*/
+	/*	double_mat_product(&K1_struct, &H_struct, &K1H, 0, 0);
+	 double_mat_inv(&K2_struct, &K2_inv);
+	 double_mat_product(&K1H, &K2_inv, &H_struct, 0, 0);*/
 	print_double_matrix(H_struct, "H");
 
 	free_double_matrix(&R_C1);
@@ -319,13 +399,52 @@ int compute_ground_pixel_projection(double * uv_c1, double * uv_c2, double * n,
 	free_double_matrix(&matB_struct);
 	free_double_matrix(&matX_struct);
 	free_double_matrix(&C2_pixel);
-	return 1 ;
+	return 1;
 }
+
+void map_from_homography(char * img_in, unsigned int w_in, unsigned int h_in, char * img_out, unsigned int w_out, unsigned int h_out, double * H, double scale){
+unsigned int u, v ;
+	for (u = 0; u < w_out; u++) {
+			for (v = 0; v < h_out; v++) {
+
+				//double xn = 0.997535, yn = 2.060746 ;
+				double xn =(v-(h_out/2.))/scale ;
+				double yn = u/scale ;
+
+
+
+				double xnp = xn * H[0] + yn * H[1] + H[2];
+				double ynp = xn * H[3] + yn * H[4] + H[5];
+				double wnp = xn * H[6] + yn * H[7] + H[8];
+
+				double xnp_norm = xnp / wnp;
+				double ynp_norm = ynp / wnp;
+
+				int hu = round(xnp_norm);
+				int hv = round(ynp_norm);
+
+				if (hu >= 0 && hv >= 0 && hu <  w_in && hv < h_in) {
+					unsigned char pixel_val = img_in[(hu) + ((hv) *  w_in)];
+					/*unsigned char pixel_val = ((hu/50)%2 ^ (hv)%2)*255;
+					parking_image->imageData[(hu) + ((hv) *  parking_image->width)] = 0 ;*/
+					img_out[u + (v * w_out)] = pixel_val;
+				}else{
+					img_out[u + (v * w_out)] = 128 ;
+				}
+			}
+		}
+}
+
 
 int main(int argc, char ** argv) {
 	int u, v;
 	IplImage * img_a = cvLoadImage("/home/jpiat/Pictures/imaobj2_rect.jpg",
 			CV_LOAD_IMAGE_GRAYSCALE);
+
+	IplImage * parking_image = cvLoadImage(
+			"/home/jpiat/Pictures/parking_laas/in01/pgm/image_0008.pgm",
+			CV_LOAD_IMAGE_GRAYSCALE);
+	IplImage * img_map = cvCreateImage(cvSize(3000, 3000), IPL_DEPTH_8U, 1);
 	IplImage * img_compo = cvCreateImage(cvSize(img_a->width, img_a->height),
 	IPL_DEPTH_8U, 1);
 	IplImage * img_compo_2 = cvCreateImage(cvSize(img_a->width, img_a->height),
@@ -333,23 +452,67 @@ int main(int argc, char ** argv) {
 
 	double uvc1[2], uvc2[2], H[3 * 3];
 	double n[3] = { 0, 0, 1 };
+	double H_bvdp[9];
+	double Ct_bvdp[12];
 	double d = 0.; //-104.;
-	compute_homography_from_cam_cam_pos(cam_1_mk, cam_2_mk, n, d, cam_bertrand_K, cam_bertrand_K, H);
-	homography(img_a->imageData, img_compo_2->width, img_compo_2->height, img_compo_2->imageData, H, cam_bertrand_K, cam_bertrand_K);
+	/*struct double_matrix cam_1_Rtw_struct, cam_bird_Rtw_struct;
+	 struct double_matrix cam_1_Rtc_struct, cam_bird_Rtc_struct;
+	 alloc_double_matrix(&cam_1_Rtw_struct, 4, 4, cam_1_Rtw);
+	 alloc_double_matrix(&cam_bird_Rtw_struct, 4, 4, cam_bird_Rtw);
+	 alloc_double_matrix(&cam_1_Rtc_struct, 4, 4, cam_1_Rtc);
+	 alloc_double_matrix(&cam_bird_Rtc_struct, 4, 4, cam_bird_Rtc);
+
+	 print_double_matrix(cam_1_Rtw_struct, "Cam1_Rtw");
+	 double_mat_inv(&cam_1_Rtw_struct, &cam_1_Rtc_struct);
+	 print_double_matrix(cam_1_Rtc_struct, "Cam1_Rtc");
+	 double_mat_inv(&cam_bird_Rtw_struct, &cam_bird_Rtc_struct);*/
+	double x, y;
+
+	calc_ct_and_H(cam_1_C, K_slam, Ct_bvdp, H_bvdp);
+
+	/*intersect_ground_plane(cam_1_C, K_virt, 0, 0, &x, &y);
+	 printf("%lf, %lf \n", x, y);*/
+	pixel_to_ground_plane(Ct_bvdp, 0, 479, &x, &y);
+	printf("%lf, %lf \n", x, y);
+	pixel_to_ground_plane(Ct_bvdp, 639, 479, &x, &y);
+	printf("%lf, %lf \n", x, y);
+	/*intersect_ground_plane(cam_1_C, K_virt, 639, 0, &x, &y);
+	 printf("%lf, %lf \n", x, y);*/
+
+	pixel_to_ground_plane(Ct_bvdp, 0, 478, &x, &y);
+	printf("%lf, %lf \n", x, y);
+	pixel_to_ground_plane(Ct_bvdp, 639, 478, &x, &y);
+	printf("%lf, %lf \n", x, y);
+	//memset(parking_image->imageData, 255, parking_image->width*parking_image->height);
+	map_from_homography(parking_image->imageData,parking_image->width, parking_image->height, img_map->imageData, img_map->width, img_map->height, H_bvdp, 100.);
+
+		cvShowImage("img", parking_image);
+		cvShowImage("map", img_map);
+		cvSaveImage("./test_map.png", img_map, NULL);
+		//cvWaitKey(0);
+	/*compute_homography_from_cam_cam_pos(cam_1_Rtw, cam_bird_Rtw, n, d, K_slam,
+	 K_slam, H);*/
+
+	return 0;
+
+	compute_homography_from_cam_cam_pos(cam_1_mk, cam_2_mk, n, d,
+			cam_bertrand_K, cam_bertrand_K, H);
+	homography(img_a->imageData, img_compo_2->width, img_compo_2->height,
+			img_compo_2->imageData, H, cam_bertrand_K, cam_bertrand_K);
 	/*for (u = 0; u < img_a->width; u++) {
-		for (v = 0; v < img_a->height; v++) {
-			uvc1[0] = u;
-			uvc1[1] = v;
-			compute_ground_pixel_projection(uvc1, uvc2, n, d, cam_1_mat,
-					cam_2_mat);
-			if (uvc2[0] >= 0 && uvc2[0] < img_compo->width && uvc2[1] >= 0
-					&& uvc2[1] < img_compo->height) {
-				img_compo->imageData[((int) uvc1[1]) * img_compo->widthStep
-						+ ((int) uvc1[0])] = img_a->imageData[((int) uvc2[1])
-						* img_a->widthStep + ((int) uvc2[0])];
-			}
-		}
-	}*/
+	 for (v = 0; v < img_a->height; v++) {
+	 uvc1[0] = u;
+	 uvc1[1] = v;
+	 compute_ground_pixel_projection(uvc1, uvc2, n, d, cam_1_mat,
+	 cam_2_mat);
+	 if (uvc2[0] >= 0 && uvc2[0] < img_compo->width && uvc2[1] >= 0
+	 && uvc2[1] < img_compo->height) {
+	 img_compo->imageData[((int) uvc1[1]) * img_compo->widthStep
+	 + ((int) uvc1[0])] = img_a->imageData[((int) uvc2[1])
+	 * img_a->widthStep + ((int) uvc2[0])];
+	 }
+	 }
+	 }*/
 	cvShowImage("orig", img_a);
 	cvShowImage("compo", img_compo);
 	cvShowImage("compo_2", img_compo_2);
